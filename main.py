@@ -18,7 +18,7 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 if GEMINI_API_KEY:
     genai.configure(api_key=GEMINI_API_KEY)
     # Sử dụng model Gemini mới nhất và chuẩn xác
-    gemini_model = genai.GenerativeModel("gemini-1.5-pro")
+    gemini_model = genai.GenerativeModel("gemini-1.5-flash-latest ")
 else:
     logger.warning("CẢNH BÁO: Chưa cấu hình GEMINI_API_KEY trong Environment Variables!")
 
