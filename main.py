@@ -1,111 +1,132 @@
 import os
 import logging
 from telegram import Update
-from telegram.ext import Application, CommandHandler, ContextTypes
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 import google.generativeai as genai
 
-# Cấu hình logging
-logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
+# --- CẤU HÌNH LOGGING ---
+logging.basicConfig(
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
+)
+logger = logging.getLogger(__name__)
 
-# Lấy Token từ Environment Variables (Cấu hình trên Render)
-TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+# --- LẤY BIẾN MÔI TRƯỜNG ---
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
-# Cấu hình Gemini AI với Prompt Định hình Kiến thức Ma Sói
+# Cấu hình Google Gemini AI
 if GEMINI_API_KEY:
     genai.configure(api_key=GEMINI_API_KEY)
-    
-    SYSTEM_INSTRUCTION = """
-    Bạn là một BẬC THẦY QUẢN TRÒ MA SÓI (Werewolf / Mafia Master) có kiến thức sâu rộng nhất về trò chơi Ma Sói.
-    Nhiệm vụ của bạn:
-    1. Am hiểu tường tận luật chơi Ma Sói cơ bản, Ma Sói Ultimate, Ma Sói Onenight, các biến thể Việt Nam và thế giới.
-    2. Giải thích chi tiết, chính xác kĩ năng của mọi chức năng: Tiên Tri, Phù Thủy, Bảo Vệ, Thợ Săn, Sói Trùm, Sói Băng, Thần Tình Yêu, Già Làng, Thằng Hề, Bán Sói, Kẻ Chết Chóc...
-    3. Hướng dẫn chiến thuật chơi Ma Sói cho từng phe (Phe Dân, Phe Sói, Phe Thứ 3).
-    4. Giọng văn kịch tính, hấp dẫn, đậm chất không khí u tối của làng Ma Sói, vừa chuyên nghiệp vừa hài hước khi cần.
-    5. Trả lời bằng Tiếng Việt ngắn gọn, rõ ràng, dễ hiểu.
-    """
-    model = genai.GenerativeModel('gemini-1.5-flash', system_instruction=SYSTEM_INSTRUCTION)
+    # Sử dụng model Gemini mới nhất và chuẩn xác
+    gemini_model = genai.GenerativeModel("gemini-1.5-flash")
 else:
-    model = None
+    logger.warning("CẢNH BÁO: Chưa cấu hình GEMINI_API_KEY trong Environment Variables!")
 
-# Lệnh /start
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    welcome_msg = (
-        "🐺 **CHÀO MƯỜNG BẠN ĐẾN VỚI QUẢN TRÒ MA SÓI AI!** 🐺\n\n"
-        "Tôi là Bậc Thầy Ma Sói - người nắm giữ kiến thức sâu rộng nhất về Làng Ma Sói!\n\n"
-        "📌 **Các lệnh hỗ trợ:**\n"
-        "• `/luat [tên_vai_trò]` : Hỏi luật chơi hoặc kĩ năng vai trò bất kỳ (VD: `/luat Phù thủy`)\n"
-        "• `/chienthuat [phe/vai_tro]` : Gợi ý mẹo và chiến thuật chơi (VD: `/chienthuat Phe Sói`)\n"
-        "• `/hoidap [câu_hỏi]` : Hỏi bất kỳ thắc mắc nào về Ma Sói!"
+# --- CÁC HÀM XỬ LÝ LỆNH (COMMANDS) ---
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Lệnh /start"""
+    user_name = update.effective_user.first_name
+    welcome_message = (
+        f"🐺 Chào mừng {user_name} đến với **Bot Ma Sói AI Am Hiểu Nhất**!\n\n"
+        "Tôi ở đây để giúp bạn nắm vững luật chơi, chiến thuật đỉnh cao và giải đáp mọi thắc mắc về game Ma Sói.\n\n"
+        "📜 **Các lệnh có sẵn:**\n"
+        "• /luat - Hướng dẫn luật chơi Ma Sói cơ bản và nâng cao\n"
+        "• /chienthuat - Chia sẻ chiến thuật, mẹo chơi ẩn thân, lật kèo\n"
+        "• /hoidap - Hỏi đáp nhanh mọi thắc mắc về game\n\n"
+        "💬 *Hoặc bạn có thể nhắn tin trực tiếp cho tôi bất cứ lúc nào để trò chuyện nhé!*"
     )
-    await update.message.reply_text(welcome_msg, parse_mode="Markdown")
+    await update.message.reply_text(welcome_message, parse_mode="Markdown")
 
-# Lệnh hỏi luật chơi & chức năng
-async def luat(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not context.args:
-        await update.message.reply_text("Vui lòng nhập tên vai trò hoặc luật cần hỏi. Ví dụ: `/luat Phù Thủy`", parse_mode="Markdown")
-        return
 
-    query = " ".join(context.args)
-    prompt = f"Hãy giải thích chi tiết luật chơi, kĩ năng và lưu ý của vai trò/chủ đề Ma Sói này: '{query}'"
+async def luat(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Lệnh /luat"""
+    luat_text = (
+        "📜 **TÓM TẮT LUẬT CHƠI MA SÓI (WEREWOLF)**\n\n"
+        "1. **Phe Dân Làng:** Tìm ra toàn bộ Ma Sói và treo cổ chúng trước khi quá muộn.\n"
+        "2. **Phe Ma Sói:** Giấu mình ban ngày, ăn thịt Dân Làng vào ban đêm.\n"
+        "3. **Phe Thứ Ba (Độc lập):** Có mục tiêu riêng (Kẻ Thổi Sáo, Cặp đôi tình nhân, Kẻ sát nhân...).\n\n"
+        "⏱ **Vòng chơi:** Ban đêm (Chức năng dậy hành động) ➔ Ban ngày (Thảo luận & Treo cổ).\n"
+        "💡 *Nhập câu hỏi chi tiết nếu bạn muốn tìm hiểu về chức năng của Tiên Tri, Thợ Săn, Bảo Vệ,...*"
+    )
+    await update.message.reply_text(luat_text, parse_mode="Markdown")
+
+
+async def chienthuat(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Lệnh /chienthuat"""
+    chien_thuat_text = (
+        "🎯 **CHIẾN THUẬT MA SÓI ĐỈNH CAO**\n\n"
+        "• **Dân Làng:** Đừng nói quá nhiều gây nghi ngờ, hãy chú ý quan sát sự mâu thuẫn trong lời nói của người khác.\n"
+        "• **Ma Sói:** Đừng 'bè phái' bảo vệ nhau lộ liễu ban ngày. Hãy biết 'bán đồng đội' đúng lúc để tạo lòng tin.\n"
+        "• **Tiên Tri:** Cân nhắc thời điểm 'lật bài ngửa' (claim) hợp lý, tránh bị Sói cắn ngay đêm hôm sau.\n\n"
+        "🧠 *Muốn bàn về chiến thuật cho phe nào cụ thể? Hãy nhắn cho tôi nhé!*"
+    )
+    await update.message.reply_text(chien_thuat_text, parse_mode="Markdown")
+
+
+async def hoidap(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Lệnh /hoidap"""
+    await update.message.reply_text(
+        "❓ Bạn muốn hỏi gì về game Ma Sói? Hãy gõ câu hỏi trực tiếp hoặc nhắn nội dung bạn thắc mắc, tôi sẽ giải đáp chi tiết cho bạn!"
+    )
+
+
+# --- XỬ LÝ TIN NHẮN CHAT VỚI AI (GEMINI) ---
+
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Nhận tin nhắn của người dùng và gọi Gemini AI trả lời"""
+    user_message = update.message.text
     
-    if model:
-        try:
-            response = model.generate_content(prompt)
-            await update.message.reply_text(response.text)
-        except Exception as e:
-            await update.message.reply_text(f"❌ Có lỗi khi tra cứu AI: {e}")
-    else:
-        await update.message.reply_text("⚠️ Chưa cấu hình GEMINI_API_KEY nên chưa dùng được tính năng AI!")
-
-# Lệnh hỏi chiến thuật
-async def chienthuat(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not context.args:
-        await update.message.reply_text("Vui lòng nhập phe/vai trò bạn muốn xin chiến thuật. Ví dụ: `/chienthuat Tiên Tri`", parse_mode="Markdown")
+    if not GEMINI_API_KEY:
+        await update.message.reply_text("Bot chưa được cấu hình API Key của AI. Vui lòng liên hệ Admin.")
         return
 
-    query = " ".join(context.args)
-    prompt = f"Phân tích chiến thuật chơi đỉnh cao, cách bluff và mẹo sống sót/chiến thắng cho: '{query}' trong game Ma Sói."
-    
-    if model:
-        try:
-            response = model.generate_content(prompt)
-            await update.message.reply_text(response.text)
-        except Exception as e:
-            await update.message.reply_text(f"❌ Có lỗi khi tra cứu AI: {e}")
-    else:
-        await update.message.reply_text("⚠️ Chưa cấu hình GEMINI_API_KEY!")
+    # Gửi trạng thái đang soạn tin nhắn cho sinh động
+    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
 
-# Lệnh hỏi đáp chung về Ma Sói
-async def hoidap(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not context.args:
-        await update.message.reply_text("Vui lòng nhập câu hỏi. Ví dụ: `/hoidap Phù thủy có thể tự cứu mình không?`", parse_mode="Markdown")
-        return
+    try:
+        # Prompt định hướng tính cách cho AI chuyên gia Ma Sói
+        prompt_context = (
+            "Bạn là một chuyên gia am hiểu sâu sắc về tựa game Board Game Ma Sói (Werewolf). "
+            "Hãy trả lời câu hỏi của người chơi một cách thông minh, lôi cuốn, mang phong cách huyền bí, "
+            "hỗ trợ chiến thuật đỉnh cao và giải đáp luật chơi chính xác bằng tiếng Việt.\n\n"
+            f"Câu hỏi của người chơi: {user_message}"
+        )
+        
+        response = gemini_model.generate_content(prompt_context)
+        reply_text = response.text
+        
+        await update.message.reply_text(reply_text)
+        
+    except Exception as e:
+        logger.error(f"Lỗi khi gọi Gemini API: {e}")
+        await update.message.reply_text("Đã xảy ra lỗi nhỏ khi kết nối với AI. Bạn thử nhắn lại sau ít phút nhé!")
 
-    query = " ".join(context.args)
-    if model:
-        try:
-            response = model.generate_content(query)
-            await update.message.reply_text(response.text)
-        except Exception as e:
-            await update.message.reply_text(f"❌ Có lỗi khi xử lý câu hỏi: {e}")
-    else:
-        await update.message.reply_text("⚠️ Chưa cấu hình GEMINI_API_KEY!")
+
+# --- HÀM KHỞI CHẠY CHÍNH ---
 
 def main():
     if not TELEGRAM_TOKEN:
-        print("Lỗi: Thiếu TELEGRAM_TOKEN!")
+        logger.error("Lỗi: Thiếu TELEGRAM_TOKEN trong biến môi trường!")
         return
 
+    # Khởi tạo Bot Telegram
     app = Application.builder().token(TELEGRAM_TOKEN).build()
 
+    # Đăng ký các lệnh
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("luat", luat))
     app.add_handler(CommandHandler("chienthuat", chienthuat))
     app.add_handler(CommandHandler("hoidap", hoidap))
 
-    print("🤖 Bot Ma Sói AI Am Hiểu Nhất đang chạy...")
-    app.run_polling()
+    # Đăng ký nhận tin nhắn văn bản thông thường để chat với AI
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+
+    logger.info("🤖 Bot Ma Sói AI Am Hiểu Nhất đang chạy...")
+    
+    # Chạy bot (đã fix xung đột polling trên Render)
+    app.run_polling(drop_pending_updates=True)
+
 
 if __name__ == "__main__":
     main()
